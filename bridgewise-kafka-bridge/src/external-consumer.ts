@@ -19,7 +19,7 @@ export class ExternalConsumer {
     const brokers = env('BRIDGEWISE_KAFKA_BROKERS').split(',');
     const username = process.env.BRIDGEWISE_KAFKA_USERNAME;
     const password = process.env.BRIDGEWISE_KAFKA_PASSWORD;
-    const mechanism = (process.env.BRIDGEWISE_KAFKA_MECHANISM || 'scram-sha-512') as any;
+    const mechanism = (process.env.BRIDGEWISE_KAFKA_MECHANISM || 'plain') as any;
 
     const sasl = username && password ? { mechanism, username, password } : undefined;
 
