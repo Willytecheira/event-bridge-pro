@@ -40,20 +40,11 @@ export default function UsersPage() {
 
   const createUser = useMutation({
     mutationFn: async () => {
-      // Sign up creates the user + profile via trigger
-      const { data, error } = await supabase.auth.signUp({
-        email: newEmail,
-        password: newPassword,
-        options: { data: { display_name: newDisplayName } },
+      const { data, error } = await supabase.functions.invoke('create-user', {
+        body: { email: newEmail, password: newPassword, display_name: newDisplayName, role: newRole },
       });
       if (error) throw error;
-      if (!data.user) throw new Error('User creation failed');
-
-      // Assign role
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .insert({ user_id: data.user.id, role: newRole });
-      if (roleError) throw roleError;
+      if (data?.error) throw new Error(data.error);
     },
     onSuccess: () => {
       toast.success('User created successfully');
