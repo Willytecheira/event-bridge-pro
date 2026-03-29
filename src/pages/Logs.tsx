@@ -16,8 +16,8 @@ export default function LogsPage() {
   const [level, setLevel] = useState<string>('');
   const [module, setModule] = useState<string>('');
   const { data: logs, isLoading } = useLogs({
-    level: level || undefined,
-    module: module || undefined,
+    level: level && level !== 'all' ? level : undefined,
+    module: module && module !== 'all' ? module : undefined,
     limit: 200,
   });
 
