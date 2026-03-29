@@ -1,4 +1,4 @@
-import { Kafka, Consumer, EachMessagePayload, logLevel } from 'kafkajs';
+import { Kafka, Consumer, EachMessagePayload, logLevel, AssignerProtocol } from 'kafkajs';
 import { env } from './config.js';
 import { createLogger } from './logger.js';
 import { EventPipeline } from './pipeline.js';
