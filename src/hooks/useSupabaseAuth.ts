@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useSyncExternalStore, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { User, Session } from '@supabase/supabase-js';
 
@@ -11,8 +11,7 @@ interface AuthState {
   role: 'admin' | 'viewer' | null;
 }
 
-// Shared state across all hook instances
-let globalState: AuthState = {
+const defaultState: AuthState = {
   user: null,
   session: null,
   isAuthenticated: false,
@@ -20,15 +19,26 @@ let globalState: AuthState = {
   email: null,
   role: null,
 };
-let listeners: Set<(s: AuthState) => void> = new Set();
-let initialized = false;
 
-function setGlobalState(s: AuthState) {
-  globalState = s;
-  listeners.forEach((fn) => fn(s));
+// Simple external store for auth state
+let currentState: AuthState = { ...defaultState };
+const subscribers = new Set<() => void>();
+
+function getSnapshot(): AuthState {
+  return currentState;
 }
 
-async function fetchRole(userId: string): Promise<'admin' | 'viewer'> {
+function subscribe(callback: () => void): () => void {
+  subscribers.add(callback);
+  return () => subscribers.delete(callback);
+}
+
+function emit(newState: AuthState) {
+  currentState = newState;
+  subscribers.forEach((cb) => cb());
+}
+
+async function resolveRole(userId: string): Promise<'admin' | 'viewer'> {
   try {
     const { data } = await supabase
       .from('user_roles')
@@ -41,61 +51,43 @@ async function fetchRole(userId: string): Promise<'admin' | 'viewer'> {
   }
 }
 
-function initAuth() {
-  if (initialized) return;
-  initialized = true;
+// Initialize auth listener once
+let initDone = false;
+function ensureInit() {
+  if (initDone) return;
+  initDone = true;
 
-  // Set up listener first
-  const { data: { subscription } } = supabase.auth.onAuthStateChange(
-    async (_event, session) => {
-      if (session?.user) {
-        // Set authenticated immediately, fetch role in background
-        setGlobalState({
-          user: session.user,
-          session,
-          isAuthenticated: true,
-          isLoading: false,
-          email: session.user.email ?? null,
-          role: globalState.role, // keep previous role until fetched
-        });
-        const role = await fetchRole(session.user.id);
-        setGlobalState({
-          ...globalState,
-          user: session.user,
-          session,
-          isAuthenticated: true,
-          isLoading: false,
-          email: session.user.email ?? null,
-          role,
-        });
-      } else {
-        setGlobalState({
-          user: null,
-          session: null,
-          isAuthenticated: false,
-          isLoading: false,
-          email: null,
-          role: null,
-        });
-      }
+  supabase.auth.onAuthStateChange((_event, session) => {
+    if (session?.user) {
+      emit({
+        user: session.user,
+        session,
+        isAuthenticated: true,
+        isLoading: false,
+        email: session.user.email ?? null,
+        role: currentState.role,
+      });
+      // Fetch role in background
+      resolveRole(session.user.id).then((role) => {
+        emit({ ...currentState, role });
+      });
+    } else {
+      emit({
+        user: null,
+        session: null,
+        isAuthenticated: false,
+        isLoading: false,
+        email: null,
+        role: null,
+      });
     }
-  );
-
-  // Cleanup not needed for global singleton
+  });
 }
 
-// Initialize immediately
-initAuth();
+ensureInit();
 
 export function useSupabaseAuth() {
-  const [state, setState] = useState<AuthState>(globalState);
-
-  useEffect(() => {
-    // Sync with global state
-    setState(globalState);
-    listeners.add(setState);
-    return () => { listeners.delete(setState); };
-  }, []);
+  const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   const login = useCallback(async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -115,5 +107,5 @@ export function useSupabaseAuth() {
     await supabase.auth.signOut();
   }, []);
 
-  return useMemo(() => ({ ...state, login, signup, logout }), [state, login, signup, logout]);
+  return { ...state, login, signup, logout };
 }
