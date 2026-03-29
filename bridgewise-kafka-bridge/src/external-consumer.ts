@@ -1,4 +1,4 @@
-import { Kafka, Consumer, EachMessagePayload, logLevel } from 'kafkajs';
+import { Kafka, Consumer, EachMessagePayload, logLevel, AssignerProtocol } from 'kafkajs';
 import { env } from './config.js';
 import { createLogger } from './logger.js';
 import { EventPipeline } from './pipeline.js';
@@ -36,11 +36,59 @@ export class ExternalConsumer {
       logLevel: logLevel.WARN,
     });
 
+    // Use 'range' assigner to match Java/librdkafka consumers in the same group
+    const rangeAssigner = ({ cluster, memberAssignment }: any) => ({
+      name: 'range',
+      version: 0,
+      async assign({ members, topics }: any) {
+        const assignment: Record<string, any> = {};
+        for (const member of members) {
+          assignment[member.memberId] = {};
+        }
+
+        for (const topic of topics) {
+          const partitionMetadata = cluster.findTopicPartitionMetadata(topic);
+          const numPartitions = partitionMetadata.length;
+          const numMembers = members.length;
+          const range = Math.ceil(numPartitions / numMembers);
+
+          members.forEach((member: any, i: number) => {
+            const start = range * i;
+            const end = Math.min(start + range, numPartitions);
+            assignment[member.memberId][topic] = [];
+            for (let partition = start; partition < end; partition++) {
+              assignment[member.memberId][topic].push(partition);
+            }
+          });
+        }
+
+        return Object.keys(assignment).map((memberId) => ({
+          memberId,
+          memberAssignment: AssignerProtocol.MemberAssignment.encode({
+            version: 0,
+            assignment: assignment[memberId],
+            userData: Buffer.alloc(0),
+          }),
+        }));
+      },
+      protocol({ topics }: any) {
+        return {
+          name: 'range',
+          metadata: AssignerProtocol.MemberMetadata.encode({
+            version: 0,
+            topics,
+            userData: Buffer.alloc(0),
+          }),
+        };
+      },
+    });
+
     this.consumer = this.kafka.consumer({
       groupId: env('BRIDGEWISE_CONSUMER_GROUP', 'bridgewise-bridge-consumer'),
       sessionTimeout: 30000,
       heartbeatInterval: 3000,
       retry: { retries: 10 },
+      partitionAssigners: [rangeAssigner],
     });
   }
 
