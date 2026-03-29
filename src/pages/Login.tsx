@@ -1,21 +1,27 @@
 import { useState } from 'react';
-import { useAuth } from '@/lib/bridge-api';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Zap } from 'lucide-react';
+import { useSupabaseAuth } from '@/hooks/useSupabaseAuth';
+import { toast } from 'sonner';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('admin@bridge.local');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const login = useAuth((s) => s.login);
+  const { login } = useSupabaseAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    await login(email, password);
-    setLoading(false);
+    try {
+      await login(email, password);
+    } catch (err: any) {
+      toast.error(err.message || 'Login failed');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -34,7 +40,7 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Email</label>
-              <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" />
+              <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="admin@bridge.local" />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Password</label>
@@ -43,9 +49,6 @@ export default function LoginPage() {
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? 'Connecting...' : 'Sign In'}
             </Button>
-            <p className="text-xs text-center text-muted-foreground">
-              Demo mode: any credentials will work when API is offline
-            </p>
           </form>
         </CardContent>
       </Card>
