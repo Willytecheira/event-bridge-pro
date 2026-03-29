@@ -2,6 +2,9 @@
  * Replay script: reads processed_events from Supabase and publishes them to internal Kafka.
  * Run: npx tsx src/replay-to-kafka.ts
  */
+import { config } from 'dotenv';
+config(); // Load .env file
+
 import { Kafka } from 'kafkajs';
 import { createClient } from '@supabase/supabase-js';
 
